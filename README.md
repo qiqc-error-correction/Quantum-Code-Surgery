@@ -1,4 +1,4 @@
-# CodeSurgery
+# Quantum Code Surgery
 
 **Matrix constructions and verification tools for quantum code surgery.**
 
