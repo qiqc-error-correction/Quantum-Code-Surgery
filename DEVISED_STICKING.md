@@ -1,208 +1,262 @@
-# Zhang–Li devised sticking：独立实现
+# Devised sticking
 
-本模块实现 [Time-Efficient Logical Operations on Quantum Low-Density Parity Checks Codes](https://arxiv.org/html/2408.01339v3) 中的 **devised sticking**：Appendix G 的 finely devised glue code，经 Appendix C/D 的 measurement sticker 得到 deformed code。入口是 `codesurgery.devised_sticking`，不调用 CKBB 的构造函数，也不修改已有 CKBB 模块、接口或命令。
+`codesurgery.devised_sticking` implements the finely devised glue code and measurement sticker from Guo Zhang and Ying Li's [*Time-Efficient Logical Operations on Quantum Low-Density Parity Check Codes*](https://arxiv.org/abs/2408.01339). Appendix G supplies the glue construction; Appendices C and D supply the sticker and its attachment to the memory. This is an independent constructor.
 
-## 输入与使用
+The same paper introduces **brute-force branching**, which uses branch stickers to separate overlapping logical targets before measurement. Devised sticking instead uses one measurement sticker designed to retain exactly the requested logical space.
 
-```python
+## Inputs and use
+
+~~~python
 from codesurgery import CSSCode
 from codesurgery.devised_sticking import devised_deform, build_devised_glue
 
 code = CSSCode([[1, 1, 1, 1]], [[1, 1, 1, 1]], distance=2)
 
-# 默认测量一个 Zhang–Li standard-form Z 逻辑生成元。
+# With no target, measure one Z generator from the computed paired basis.
 default = devised_deform(code)
 
-# 一次同时测量两个逻辑；物理支撑可以重叠。
+# Simultaneously measure two independent logicals; supports may overlap.
 joint = devised_deform(code, ["ZZII", "ZIZI"])
 
-# X 使用对偶构造；允许负号。
-x = devised_deform(code, "-XXII", pauli="X")
+# Pure X uses the dual construction; signed targets are supported.
+x_result = devised_deform(code, "-XXII", pauli="X")
 
-# 等价的二进制矩阵输入；每行一个物理代表元。
+# Equivalent binary input: one physical representative per row.
 joint = devised_deform(code, [[1, 1, 0, 0], [1, 0, 1, 0]])
 joint.save("devised.json")
 joint.save("devised.npz")
 print(joint.glue.h_g, joint.glue.s, joint.glue.t)
 print(joint.hx, joint.hz, joint.summary())
 
-# 如只需要 H_G、S、T：此底层接口接受无符号二进制行矩阵。
+# The lower-level glue constructor accepts unsigned binary rows.
 glue = build_devised_glue(code, [[1, 1, 0, 0], [1, 0, 1, 0]])
-```
+~~~
 
-`devised_deform(code, logicals=None, *, pauli="Z", logical_index=0, d_R=None, ldpc=True, max_entries=50_000_000, optimize_logical=False, logical_optimization_options=None)`：
+The public signature is
 
-- `logicals` 可为一个物理 Pauli 字符串、一个二进制向量、字符串列表或二进制行矩阵。字符串只接受同型纯 X 或纯 Z，类型须与 `pauli` 一致；物理顺序就是输入矩阵列顺序。
-- 未提供 `logicals` 时，默认测量第 `logical_index` 个 standard-form 生成元，索引从 0 开始。不会默认同时测量所有逻辑。
-- 每个目标必须是非平凡 normalizer，目标集必须在模掉原稳定子后独立。identity、稳定子、非 normalizer、空目标集、重复或逻辑相关的目标均报错。
-- 接受手动输入的稳定子修饰代表元；默认保留其物理算符。设置 `optimize_logical=True` 时先乘稳定子尝试减重，再构造 glue；默认只处理重量大于 `2d` 的目标。`logical_optimization_options={"threshold": None}` 可取消这一阈值。
-- `d_R` 是 repetition code 的长度；有 `d_R` 个 dual 层及 `d_R−1` 个 primal 层。默认取输入 `distance`；未给距离时取 `n`。
-- `ldpc=True` 执行 bit/check duplication；`False` 保留 dressed glue，用于查看稀疏化前的矩阵。
-- 这是 CSS stabilizer 输入码的单 measurement-sticker 实现。同型目标可重叠。直接输入 Y、ZX 或 X/Z 混合目标集会报错；论文的通用 Pauli 测量在 [Appendix I](https://arxiv.org/html/2408.01339v3#A9) 使用逻辑辅助块及多阶段协议，不等于一个单纯 X/Z measurement sticker。
+~~~text
+devised_deform(
+    code, logicals=None, *, pauli="Z", logical_index=0,
+    d_R=None, ldpc=True, max_entries=50_000_000,
+    optimize_logical=False, logical_optimization_options=None,
+)
+~~~
 
-独立命令行：
+- `logicals` accepts one physical Pauli string, a binary vector, a list of strings, or a binary row matrix. All targets must be pure X or all pure Z, matching `pauli`. Physical coordinates follow the input check-matrix columns.
+- Omitted targets select only generator `logical_index` of the requested type. Indices start at zero. Paired logical generators are computed by binary Gaussian elimination.
+- Each target must be a nontrivial normalizer, and their logical classes must be independent modulo the original stabilizers. Identity, stabilizers, non-normalizers, empty lists, and logically dependent targets are rejected.
+- Supplied physical representatives are preserved by default. `optimize_logical=True` first attempts stabilizer-based weight reduction in each target's own signed logical class. The default trigger is strictly `weight > 2 * code.distance`; unknown distance skips reduction. Set `logical_optimization_options={"threshold": None}` to attempt it at any weight. Smaller individual supports need not reduce the total sticker overhead.
+- `d_R` is the repetition-code length: $d_R$ dual layers and $d_R-1$ primal layers. Its default is the supplied memory distance, or `code.n` if that distance is unknown.
+- `ldpc=True` applies bit and check duplication. `False` exposes the dressed glue before this sparsification.
+- A single sticker here supports same-type CSS targets. Direct Y, XZ, or mixed X/Z target sets are rejected. The paper's general Pauli protocol in [Appendix I](https://arxiv.org/html/2408.01339v3#A9) uses logical ancillas and several measurement stages; it is not equivalent to one pure X/Z sticker.
 
-```sh
+The independent command-line interface is
+
+~~~sh
 python -m codesurgery.devised_sticking input.json -o deformed.npz
 python -m codesurgery.devised_sticking input.json --optimize-logical -o reduced.npz
-```
+~~~
 
-这里的 `input.json` 是用户提供的输入文件。JSON 接受 `hx,hz,distance,pauli,logical/logicals,logical_index,d_R,ldpc,max_entries,optimize_logical,logical_optimization_options`；`logical` 与 `logicals` 不能同时给出。没有校验行时，用 `n` 保留矩阵宽度，例如 `{"n":2,"hx":[],"hz":[],"logical":"ZZ","d_R":1}`。原来的 `python -m codesurgery` 仍是 CKBB。
+JSON accepts `hx,hz,distance,pauli,logical/logicals,logical_index,d_R,ldpc,max_entries,optimize_logical,logical_optimization_options`. Do not supply both `logical` and `logicals`. For empty check sets, provide `n` to retain the matrix width, for example `{"n":2,"hx":[],"hz":[],"logical":"ZZ","d_R":1}`. The top-level `python -m codesurgery` command remains the CKBB interface.
 
-仓库保留的完整运行示例为 [BB90 减重前后构造与 overhead 比较](examples/bb90_compare.py)。
+A complete BB90 comparison example is [examples/bb90_compare.py](examples/bb90_compare.py).
 
-## 第一步：naked glue 和 Q=KS
+## 1. Restricted support and naked glue
 
-以下写 Z 测量；X 测量交换 X/Z。设目标矩阵为 (J_A\in\mathbb F_2^{q\times n})，目标逻辑数为 (q)。
+Describe pure Z measurement first; exchange X and Z for pure X. Let $J_A\in\mathbb F_2^{q\times n}$ contain the requested physical representatives, $V$ their support union, and $I$ the original X-check rows meeting $V$. Define
 
-1. 取所有目标支撑的并集 (V)，以及与它相邻的原 X 校验行 (I)。
-2. (H_N=H_X[I,V])，(S_N) 是将支撑坐标嵌入原物理坐标的选择矩阵。
-3. (T_N) 把每个 naked check 映射回其原 X 校验行。因此
+$$
+H_N=H_X[I,V].
+$$
 
-\[
+The selector $S_N$ embeds coordinates in $V$ into the memory, and $T_N$ embeds the selected check rows into the original X-check row set. Therefore
+
+$$
 H_XS_N^T=T_NH_N.
-\]
+$$
 
-令 (K_N) 为 (ker H_N) 的行基，仍采用用户要求的表示：
+Let $K_N$ be a row basis of $\ker H_N$. The support-local normalizers and their logical signatures are
 
-\[
+$$
 Q_N=K_NS_N,\qquad M_N=Q_NJ_X^T.
-\]
+$$
 
-(k_N=\operatorname{rank}M_N) 是支撑内独立逻辑类别数。(k_N-q) 是要去掉的额外逻辑方向数；稳定子方向产生零 signature，不计入额外逻辑。
+There are $k_N=\operatorname{rank}M_N$ independent logical classes on this support. The excess $k_N-q$ must be removed. Support-local stabilizers have zero signature and must not be counted as extra logical information.
 
-## 第二步：dressing 去掉额外逻辑方向
+## 2. Dressing removes only unwanted logical directions
 
-实现 [Appendix G Algorithm 4](https://arxiv.org/html/2408.01339v3#A7.SS2) 的线性代数构造：
+The constructor follows [Appendix G, Algorithm 4](https://arxiv.org/html/2408.01339v3#A7.SS2).
 
-- (G_0=\operatorname{rowbasis}(\ker M_N^T)K_N)，保留所有支撑内稳定子方向。
-- (G_1) 是目标物理向量限制到 (V) 后的独立行基。内部允许对目标行做可逆基变换；输出 witness 仍对应每一个原输入算符及其符号。
-- 补全 (G_0,G_1) 到 (ker H_N) 的基 (G_2)，并减去目标方向，使 (G_2S_N) 只有未测量逻辑分量及稳定子分量。
-- 把原逻辑基变换为目标/补空间的配对基 (J_{Z,A},J_{Z,C}) 与 (J_{X,A},J_{X,C})，得到
+1. Keep a basis of all support-local stabilizer directions:
+   $
+   G_0=\operatorname{rowbasis}(\ker M_N^T)K_N.
+   $
+2. Let $G_1$ be an independent target basis restricted to $V$. Internal invertible changes of target basis are allowed; the returned witnesses still refer to the original targets and signs.
+3. Complete $G_0,G_1$ to a basis of $\ker H_N$ with $G_2$, removing target components from these complementary rows.
+4. Choose paired logical bases $(J_{Z,A},J_{Z,C})$ and $(J_{X,A},J_{X,C})$, where A denotes the measured space and C its logical complement. Then
+   $
+   G_2S_N=UJ_{Z,C}+VH_Z.
+   $
 
-\[
-G_2S_N=UJ_{Z,C}+VH_Z,\qquad
-D=(U^r)^TJ_{X,C}S_N^T,\qquad UU^r=I.
-\]
+The matrix $U$ is obtained directly by pairing with the complementary X generators:
 
-程序显式验证
+$$
+\boxed{U=(G_2S_N)J_{X,C}^T}.
+$$
 
-\[
+It has $k_N-q$ rows and $k-q$ columns and full row rank. Solve $UU^r=I_{k_N-q}$ over $\mathbb F_2$, and set
+
+$$
+D=(U^r)^TJ_{X,C}S_N^T.
+$$
+
+The implementation checks the defining identities
+
+$$
 DG_0^T=0,\qquad DG_1^T=0,\qquad DG_2^T=I.
-\]
+$$
 
-然后取
+Finally,
 
-\[
-H_D=\begin{bmatrix}H_N\\D\end{bmatrix},\quad
-T_D=[T_N\mid0].
-\]
+$$
+H_D=\begin{bmatrix}H_N\\D\end{bmatrix},
+\qquad T_D=[T_N\mid0].
+$$
 
-这样 ((\ker H_D)S_N) 保留目标与支撑内稳定子，去掉其他逻辑类别。
+Thus $(\ker H_D)S_N$ retains the targets and support-local stabilizers while removing the other logical classes. Fine devising concerns the **logical quotient**: it does not require the entire mapped kernel to contain only the target vectors.
 
-## 第三步：将 dressed glue 稀疏化
+Logical basis changes must preserve pairing. If $J_Z'=RJ_Z$, the conjugate change is $J_X'=R^{-T}J_X$; an untransposed inverse would not in general give $J_X'J_Z'^T=I$.
 
-实现 Appendix G 的 bit duplication 和 check duplication：
+## 3. Sparsifying the dressed glue
 
-```text
+The matrix $D$ can be dense. Appendix G's bit and check duplication convert $H_D$ to the final glue matrix $H_G$:
+
+~~~text
 BitDuplication(u, {a,b}):
-    添加一个 bit u' 和一个 check c，c 检查 u+u'=0
-    把 a,b 对 u 的边移到 u'
+    add a bit u' and an equality check u + u' = 0
+    move the incidences of checks a,b from u to u'
 
 CheckDuplication(a, {u,v}):
-    添加一个 bit w 和一个 check b
-    把 a 对 u,v 的边移到 b
-    a,b 都连接 w；因此 w=u+v
-```
+    add a bit w and a check b
+    move the incidences of u,v from check a to b
+    connect both a and b to w, so b imposes w = u + v
+~~~
 
-只移动 dressing 附加边，保持 naked check 行不变；新增 glue bits 的 (S) 行全零，新增 checks 的 (T) 列全零。因此始终保持
+Only dressing incidences move. Naked check rows remain unchanged. New glue-bit rows in $S$ and new glue-check columns in $T$ are zero, preserving
 
-\[
+$$
 H_XS^T=TH_G,\qquad
 (\ker H_G)S=(\ker H_D)S_N.
-\]
+$$
 
-程序对每个原 glue bit 消减多余 dressing 边，再把 dressing check 拆为小重量校验，并检查最终行/列重量均不超过
+Write $w_{\max}(H)$ for the maximum of **both row and column weights** of $H$. With `ldpc=True`, the implementation checks
 
-\[
-\max\{w_{\max}(H_X)+1,3\}.
-\]
+$$
+w_{\max}(H_G)\le\max\{w_{\max}(H_X)+1,3\}.
+$$
 
-还使用论文末尾的 standard-form 优化：目标系数化为 ([I_q\mid P])，将 (U) 化为 ([I\mid Q])，使右逆只选择相应行。对于处于原 standard logical span 的物理代表元，检查并记录 (D) 的非零数不超过 ((k_N-q)(q+1)) 及对应大小界。任意稳定子修饰代表元仍能得到 finely devised、重量受界的 glue，但不无条件声称此优化开销界；输出实际大小。
+This is a bound on the glue matrix; the final deformed code also contains sticker connections and memory checks.
 
-本版明确处理两处论文记号不一致：
+The implementation row-reduces target coefficients to an identity-pivot form and similarly chooses $U=[I\mid Q]$, up to a column permutation. When the supplied representatives lie in the computed pure logical-generator span, it also checks the optimized dressing bound
 
-1. 若 (J_Z'=RJ_Z)，共轭基必须取 (J_X'=R^{-T}J_X)，才能满足 (J_X'J_Z'^T=I)。正文 Eq. (35) 等处写成了不带转置的逆；代码使用逆转置，并验证配对。
-2. Algorithm 5 的 check-duplication 循环印为 (mathcal C_N)，而 Eq. (109) 计数使用 (mathcal C_D)。按 (mathcal C_N) 执行不会拆分稠密 dressing 行。代码按 Eq. (105)/(109) 和重量界处理 (mathcal C_D)，并验证 naked 行保持不变、兼容关系及重量界。
+$$
+\operatorname{nnz}(D)\le(k_N-q)(q+1)
+$$
 
-另需保留 (G_0)：fine 条件要求逻辑商空间等于目标空间，不要求整个映射 kernel 只有目标向量；其中可以包含稳定子。
+and the resulting glue-size bounds. Arbitrary stabilizer-modified representatives still receive a valid finely devised glue and a checked degree bound; the optimized nonzero-count bound is not assumed for them. Their actual dimensions are reported.
 
-## 第四步：measurement sticker 和 deformed code
+The check-splitting loop applies to dressing checks $\mathcal C_D$, as counted in Appendix G Eq. (109). Applying it only to naked checks would leave dense dressing rows untouched. Compatibility, unchanged naked rows, the mapped kernel, and the final weight bound are all verified.
 
-设 (H_G\in\mathbb F_2^{r_G\times n_G})，(lambda=lambda_{d_R}\in\mathbb F_2^{(d_R-1)\times d_R})。Appendix C Eq. (37)/(38)：
+## 4. Measurement sticker and deformed code
 
-\[
-H_X^M=[I_{d_R-1}\otimes H_G\mid\lambda\otimes I_{r_G}],\qquad
+For $H_G\in\mathbb F_2^{r_G\times n_G}$, let
+$\lambda=\lambda_{d_R}\in\mathbb F_2^{(d_R-1)\times d_R}$ be the repetition-code check matrix. The sticker matrices are
+
+$$
+H_X^M=[I_{d_R-1}\otimes H_G\mid\lambda\otimes I_{r_G}],
+\qquad
 H_Z^M=[\lambda^T\otimes I_{n_G}\mid I_{d_R}\otimes H_G^T].
-\]
+$$
 
-物理列顺序固定为：**原存储比特、所有 primal 层、所有 dual 层**。辅助比特数
+The physical order is **memory, all primal layers, all dual layers**, with
 
-\[
-n_{\rm anc}=(d_R-1)n_G+d_Rr_G.
-\]
+$$
+n_{\mathrm{anc}}=(d_R-1)n_G+d_Rr_G.
+$$
 
-按 Appendix D Eq. (45)/(46) pasting：原 X checks 在第一 dual 层接 (T)，第一块 sticker Z checks 在原比特上接 (S)；原 Z checks 在辅助列上全零。X 测量交换相应角色。代码返回 (\widetilde H_X,\widetilde H_Z)，并验证二者对易。
+For Z measurement, extend memory X checks by $T$ on the first dual layer and attach $S$ to the first sticker Z-check block. Original memory Z checks have zero auxiliary support. For X measurement, exchange the roles. The returned matrices $\widetilde H_X,\widetilde H_Z$ are checked for commutation.
 
-输出 `protected_x,protected_z` 按 Eq. (49)/(50) 构造并验证：未测量的同型逻辑只占原比特；其共轭逻辑延伸到 primal 层，并在最后 dual 层接 (gamma)，其中 (J_{X,C}S^T=\gamma H_G)。保护逻辑数为 (k-q)，额外 stabilizer 自由度计为辅助 gauge。
+The remaining logical generators `protected_x,protected_z` are constructed from the paper's logical-operator formulas and verified. Unmeasured Z logicals remain on the memory, while their conjugate X logicals extend to the sticker using a solution of
 
-## 第五步：检查实际测量空间
+$$
+J_{X,C}S^T=\gamma H_G.
+$$
 
-glue 条件和 witness 均不足以代替最终输出检查。令最终 symplectic check 两半为 (C_X,C_Z)，其辅助部分组合为
+There are $k-q$ protected logical qubits. Additional stabilizer-code logical degrees of freedom are tracked as auxiliary gauges.
 
-\[
-A_{\rm aux}=[C_{X,\rm aux}\mid C_{Z,\rm aux}],\qquad
-L=\operatorname{rowbasis}(\ker A_{\rm aux}^T).
-\]
+## 5. Checking the actual measured space
 
-所有辅助作用消失的 check 产品在原比特上的逻辑 signature 为
+The glue conditions and target witnesses do not replace final output validation. For the output Pauli-check halves $C_X,C_Z$, eliminate auxiliary support:
 
-\[
-\Gamma=[LC_{X,\rm data}J_Z^T\mid LC_{Z,\rm data}J_X^T].
-\]
+$$
+A_{\mathrm{aux}}=[C_{X,\mathrm{aux}}\mid C_{Z,\mathrm{aux}}],
+\qquad L=\operatorname{rowbasis}(\ker A_{\mathrm{aux}}^T).
+$$
 
-要求 (operatorname{row}(\Gamma)) **恰好等于**输入目标 signature 的行空间，其 rank 等于 (q)。额外读出、漏读目标、或 rank 相同但读出错误目标，均抛出 `DevisedReadoutError`。导出前再次验证；失败不会覆盖已有结果文件。
+The resulting memory-only logical signatures are
 
-每个目标还提供 `measurement_witnesses` 的一行，验证其对应 check 产品等于输入的有符号物理 Pauli。原存储 checks 保持正号；校验符号与全部依赖关系一致，不产生 (-I)。
+$$
+\Gamma=[LC_{X,\mathrm{memory}}J_Z^T\mid
+        LC_{Z,\mathrm{memory}}J_X^T].
+$$
 
-## 总体伪代码
+Require its row space to equal the requested target-signature space, of rank $q$. Extra readout, missing targets, or an incorrect space of the same dimension raises `DevisedReadoutError`.
 
-```text
-DevisedDeform(memory, targets=None, pauli=Z, d_R=None):
-    未输入 targets 时，用 standard-form 的一个逻辑生成元
-    检查所有 targets 是同型、非平凡、模稳定子独立的 normalizers
-    V = union_support(targets)
-    H_N, S_N, T_N = naked_glue(memory, V)
+Each row of `measurement_witnesses` selects a check product equal to its signed physical target. Original memory-check signs remain positive, all check dependencies are consistent, and no dependency produces $-I$. Saving revalidates the result before writing; validation failure leaves an existing result file untouched.
+
+## Pseudocode
+
+~~~text
+DEVISED_DEFORM(memory, targets=None, pauli=Z, d_R=None):
+    choose one paired logical generator if targets are omitted
+    require same-type, nontrivial targets independent modulo stabilizers
+    optionally reduce each signed representative within its stabilizer coset
+
+    V = union of target supports
+    H_N, S_N, T_N = restricted memory checks and selectors
     K = kernel(H_N); Q = K S_N; M = Q J_conjugate^T
-    G0 = kernel(M^T) K                         # 支撑内稳定子
-    G1 = restricted_independent_target_basis
-    G2 = complete_kernel_basis_without_active_components(G0, G1)
-    将逻辑基及 U 化为 standard form
-    D = right_inverse(U)^T J_conjugate,C S_N^T
-    验证 D G0^T=0, D G1^T=0, D G2^T=I
+    G0 = kernel(M^T) K
+    G1 = independent target basis restricted to V
+    G2 = complementary kernel basis with target components removed
+    construct paired target/complement logical bases
+    U = (G2 S_N) J_conjugate,C^T
+    choose a full-row-rank pivot basis for U and solve U Uright = I
+    D = Uright^T J_conjugate,C S_N^T
+    verify D G0^T=0, D G1^T=0, D G2^T=I
     H_D = [H_N; D]
-    H_G, S, T = LDPC_duplication(H_D, S_N, [T_N,0])
-    验证兼容、mapped kernel、重量界和目标逻辑空间
-    H_X_deformed, H_Z_deformed = paste_measurement_sticker(H_G,S,T,d_R)
-    从实际 checks 消去全部辅助作用，验证 readout_space==target_space
-    解每个输入算符的有符号 witness，并构造剩余 protected logical pairs
-    验证对易、符号依赖、witness、protected pairs；返回独立结果对象
-```
+    H_G, S, T = duplication(H_D, S_N, [T_N,0]) if ldpc else dressed glue
+    verify compatibility, mapped kernel, and applicable degree bounds
 
-## 输出和距离范围
+    assemble the measurement sticker and attach it to the memory
+    eliminate auxiliary support from the actual output checks
+    require measured logical space == target logical space
+    solve signed target witnesses and remaining protected logical pairs
+    verify commutation, signs, dependencies, witnesses, and protected pairs
+    return matrices and construction metadata
+~~~
 
-主要字段：`hx,hz`、`check_x,check_z,check_signs`、多个 `measurement_x,measurement_z,measurement_signs,measurement_witnesses`、`protected_x,protected_z`、`protected_k` 和 `glue.h_g,s,t`。所有测量数组均按行对应输入目标；JSON/NPZ 包含这些矩阵及中间推导元数据。
+## Outputs and distance
 
-`glue.metadata` 保留 naked/dressed/glue 三阶段数据、(G_0,G_1,G_2,U,D)、稀疏化操作轨迹，以及前后的 (K,Q=KS,M)。`metadata.measurement_validation` 保留实际输出校验的辅助消元结果及逻辑 signature。
+The result exposes `hx,hz`; `check_x,check_z,check_signs`; `measurement_x,measurement_z,measurement_signs,measurement_witnesses`; `protected_x,protected_z,protected_k`; and `glue.h_g,s,t`. Measurement rows retain input target order. JSON and NPZ exports include matrices and construction metadata.
 
-距离字段引用论文 measurement-sticker 的 **protected subsystem** 下界 (min\{d/|S|,d_R\})。本构造 (|S|=1)，所以给定有效存储距离 (d) 时记录 (min\{d,d_R\})；没有输入距离就不输出数值下界。输入距离由调用者保证，程序不计算最小距离。辅助 gauge 的存在不改变保护逻辑数；不能把所有 raw stabilizer 自由度都当成存储逻辑来解释这个下界。矩阵使用 dense NumPy，有显式资源上限；本版生成矩阵，不生成 syndrome 电路或解码器。
+`glue.metadata` records the naked, dressed, and sparsified stages; $G_0,G_1,G_2,U,D$; duplication operations; and before/after $K,Q=KS,M$. `metadata["measurement_validation"]` records the output-based auxiliary elimination and logical signatures.
+
+The reported lower bound is the paper's **protected-subsystem** distance bound
+
+$$
+d_{\mathrm{protected}}\ge\min\{d/|S|,d_R\}.
+$$
+
+Here $|S|$ is the induced Hamming norm for row vectors, and the construction has $|S|=1$. With a valid supplied memory distance $d$, the reported bound is therefore $\min\{d,d_R\}$. If the input distance is unknown, no numerical lower bound is reported. This constructor does not compute the minimum distance. Auxiliary gauges must not be mistaken for the protected memory logicals when interpreting this bound.
+
+Matrices use dense NumPy storage with explicit size limits. The module does not generate syndrome circuits or decoders.

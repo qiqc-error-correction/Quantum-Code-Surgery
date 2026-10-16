@@ -1,204 +1,226 @@
-# CKBB 矩阵构造和伪代码
+# CKBB matrix construction and pseudocode
 
-输入为 CSS stabilizer code `(H_X,H_Z)` 和非平凡逻辑 Pauli。先说明纯 X；纯 Z 交换 X/Z。raw 单支撑构造保留原 restriction；同型 Fig. 3 乘积要求显式给出不相交分支。所有构造最终检查实际逻辑读出。
+This module constructs a deformed code for one nontrivial logical Pauli observable of a CSS stabilizer code. It follows the alternating-layer and connection constructions in [Cohen, Kim, Bartlett and Brown, *Low-overhead fault-tolerant quantum computing using long-range connectivity*](https://arxiv.org/abs/2110.10794), Figs. 2–5. The formulas below first describe pure X measurements; exchange X and Z for pure Z.
 
-## 1. 默认逻辑基：Zhang–Li standard form
+## 1. Choosing a logical basis
 
-仅生成基时消去冗余行；CKBB 保留原始校验行。
+When a logical basis is needed, binary Gaussian elimination supplies paired generators. After removing redundant rows for this calculation and applying a common column permutation, write
 
-```text
-STANDARD_LOGICALS(HX, HZ):
-    检查 HX HZ^T = 0
-    X ← HX 的独立 RREF 行基；PX ← 其主元列
-    Z ← HZ 的独立行基
-    PZ ← Z 限制到 PX 之外后选出的主元列
-    V ← 剩余列；p ← [V, PX, PZ]
-    归一化 X[:,PX]=I，Z[:,PZ]=I
-    在列顺序 p 中写 X=[A,I,B]，Z=[C,D,I]
-    JX_standard ← [I_k,0,C^T]
-    JZ_standard ← [I_k,A^T,0]
-    JX[:,p] ← JX_standard；JZ[:,p] ← JZ_standard
-    返回 JX,JZ,p 和 standard-form 元数据
-```
+$$
+H_X^S=[A\mid I_{r_X}\mid B],\qquad
+H_Z^S=[C\mid D\mid I_{r_Z}].
+$$
 
-`k=n−rank(HX)−rank(HZ)`，并且
+Then one choice is
 
-\[
+$$
+J_X^S=[I_k\mid0\mid C^T],\qquad
+J_Z^S=[I_k\mid A^T\mid0],\qquad
+k=n-r_X-r_Z.
+$$
+
+The implementation maps these generators back to the original physical column order. They satisfy
+
+$$
 H_ZJ_X^T=H_XJ_Z^T=0,\qquad J_XJ_Z^T=I_k.
-\]
+$$
 
-默认取指定类型的第 0 行。Y 默认生成元由配对 X/Z 的 `i Xbar_j Zbar_j` 生成，并换成有符号物理 Pauli 字符串。standard form 不优化重量；逻辑乘积或手动代表元的支撑若造成额外读出，会被拒绝。
+This is a standard stabilizer linear-algebra construction; see [Gottesman's thesis, §4.1](https://arxiv.org/abs/quant-ph/9705052) and [Cleve–Gottesman, §III](https://arxiv.org/abs/quant-ph/9607030). The same CSS block convention is used in [Zhang–Li, Appendix A](https://arxiv.org/html/2408.01339v3#A1). The original memory-check rows are retained in the surgery matrices.
 
-单个纯基生成元有更强性质：`JZ[j]` 的支撑仅在 `V_j` 和 `PX`，所以该支撑内任意 Z normalizer 配对 `JX` 后只能得到 `0` 或 `e_j`。若 signature 为零，它属于 `HZ` 行空间；但它在 `PZ` 为零，而 `HZ[:,PZ]=I`，故它只能是零向量。因此该支撑的 kernel 维数恰为 1。X 方向对称。这证明默认单个纯基生成元安全，同时解释为何任意 product 或手动稳定子修饰后不能直接继承这个结论。
+With no explicit target, `logical_index` selects one generator of the requested type, starting at zero. A logical Y generator is $i\bar X_j\bar Z_j$, with its physical sign calculated explicitly. Gaussian elimination does not minimize physical support.
 
-## 2. 支撑 restriction 和逻辑 signature
+## 2. Restricting to the target support
 
-目标为 `X(l)`，`V=supp(l)`，`w=|V|`。选择矩阵 `S` 为 `w×n`，`S[t,V[t]]=1`。令 `I` 为与支撑相交的原始 Z-check 行：
+For a pure X target $X(l)$, let $V=\operatorname{supp}(l)$, $w=|V|$, and let $S\in\mathbb F_2^{w\times n}$ select the coordinates in $V$. Retain the original Z-check rows that meet $V$, indexed by $I$, and define
 
-\[
-F=H_Z[I,V],\quad B[I[t],t]=1,\quad H_ZS^T=BF,\quad F\mathbf1=0.
-\]
+$$
+F=H_Z[I,V],\qquad B[I[t],t]=1.
+$$
 
-`K` 是 kernel 行基，映回完整物理坐标：
+Thus
 
-\[
-Q=KS,\quad QH_Z^T=0,\quad M_X=QJ_Z^T,\quad a_X=lJ_Z^T.
-\]
+$$
+H_ZS^T=BF,\qquad F\mathbf1=0.
+$$
 
-纯 Z 使用 `QHX^T=0`、`MZ=QJX^T`、`aZ=lJX^T`。配对逻辑基给出逻辑系数，并满足
+If the rows of $K$ form a basis of $\ker F$, the corresponding memory operators and logical signatures are
 
-\[
+$$
+Q=KS,\qquad QH_Z^T=0,\qquad
+M_X=QJ_Z^T,\qquad a_X=lJ_Z^T.
+$$
+
+For pure Z, exchange X and Z. In particular,
+
+$$
 \operatorname{rank}M_X
 =\operatorname{rank}\begin{pmatrix}H_X\\Q\end{pmatrix}
 -\operatorname{rank}H_X.
-\]
+$$
 
-Z 型右侧换 `HZ`。安全逻辑行空间是 `span(a)`，不能只将候选行 XOR 后比较。首个基目标的候选行可为零或 `e0`；任意 product 的 `a` 可有多个 1。
+The requested logical space is $\operatorname{span}(a_X)$. Comparing only the XOR of candidate rows is insufficient: all independent signatures must be considered.
 
-`dim ker F>1` 不必导致额外逻辑，因为候选可为稳定子。例如 `HX=HZ=[110]`、目标 `111`，kernel 为 `span{110,001}`，signature 为 `0,1`。这不满足原文更强的 irreducible-support 条件，不能直接据此认证距离。
+A kernel of dimension greater than one need not imply an extra logical measurement. For example, with `HX=HZ=[110]` and target `111`, the kernel is spanned by `110,001`; one direction is a stabilizer. This can pass a logical-readout check while failing the stronger irreducible-support hypothesis used for the original distance certificate.
 
-raw 构造不改变 `F` 来消除类别。最终输出若实际读出额外逻辑，就抛 `UnintendedLogicalMeasurementError`。
+A single pure generator from the basis in §1 has a one-dimensional restricted kernel. This fact does not extend automatically to arbitrary products or stabilizer-modified physical representatives. The final code is therefore checked independently.
 
-## 3. 原始交替层矩阵
+## 3. Alternating-layer matrices
 
-设 `F` 为 `c×w`，使用 `r` 个 dual 层。列按
+Let $F$ have shape $c\times w$, and use $r$ dual layers. Order the columns as
 
-\[
-(\mathrm{data};b_1,\ldots,b_r;a_2,\ldots,a_r),\quad
-N=n+rc+(r-1)w
-\]
+$$
+(\mathrm{memory};b_1,\ldots,b_r;a_2,\ldots,a_r),
+\qquad N=n+rc+(r-1)w,
+$$
 
-排列，`b_j` 长 `c`，`a_j` 长 `w`。X-check 保留 `HX`；每层添加 `w` 行，在 `b_j` 放 `F^T`，相邻 primal 块放单位阵，第一层在 data 放 `S`。Z-check 将 `HZ` 延伸 `B` 到 `b1`；每个内部层添加 `c` 行，在 primal 块放 `F`，相邻 dual 块放单位阵。
+where each $b_j$ has $c$ qubits and each $a_j$ has $w$ qubits. The first dual-check block attaches through $S$. Internal layers connect through $F,F^T$ and identity matrices.
 
-`r=2`，列为 `(data,b1,b2,a2)`：
+For $r=2$, with columns $(\mathrm{memory},b_1,b_2,a_2)$,
 
-\[
+$$
 H_X'=\begin{pmatrix}
-H_X&0&0&0\\S&F^T&0&I_w\\0&0&F^T&I_w
-\end{pmatrix},\quad
+H_X&0&0&0\\
+S&F^T&0&I_w\\
+0&0&F^T&I_w
+\end{pmatrix},\qquad
 H_Z'=\begin{pmatrix}
-H_Z&B&0&0\\0&I_c&I_c&F
+H_Z&B&0&0\\
+0&I_c&I_c&F
 \end{pmatrix}.
-\]
+$$
 
-接口由 `HZ S^T=BF` 保证对易，内部由 `F+F=0` 抵消。全部 dual checks 相乘时，primal 支撑出现两次，dual 支撑由 `F1=0` 消去，只剩 `X(l)`。这给出 measurement witness。
+The memory interface commutes because $H_ZS^T=BF$; internal contributions cancel over $\mathbb F_2$. Multiplying every new X dual check cancels the primal support, while $F\mathbf1=0$ cancels the dual support, leaving $X(l)$. This supplies a measurement witness.
 
-## 4. Fig. 3：显式不相交同型分支
+The unmodified support construction retains $F$; it does not add connections automatically to remove unwanted logical directions. Such directions cause final validation to fail.
 
-`logical_factors=[l1,...,lt]` 要求 `t≥2`，所有因子同为纯 X 或纯 Z，物理支撑不相交。各因子分别计算 `Fi,Bi,Si`，共享原校验在各分支有自己的辅助副本：
+## 4. Fig. 3: connecting disjoint factors of the same type
 
-\[
-F_0=\operatorname{diag}(F_1,\ldots,F_t),\quad
-B_0=[B_1\;\cdots\;B_t],\quad
+`logical_factors=[l1,...,lt]` requests a product of at least two pure X factors or at least two pure Z factors. Their physical supports must be disjoint. Build separate $F_i,B_i,S_i$ blocks, including separate ancilla copies when an original check meets several factors:
+
+$$
+F_0=\operatorname{diag}(F_1,\ldots,F_t),\qquad
+B_0=[B_1\ \cdots\ B_t],\qquad
 S=\begin{pmatrix}S_1\\\vdots\\S_t\end{pmatrix}.
-\]
+$$
 
-`H_opposite S^T=B0 F0`。跨分支连接的 incidence 行只连接两个支撑坐标；`B` 相应补零列：
+Then $H_{\mathrm{opposite}}S^T=B_0F_0$. Connection rows join support coordinates in different factors:
 
-\[
-F=\begin{pmatrix}F_0\\E_{\mathrm{connection}}\end{pmatrix},\quad B=[B_0\;0].
-\]
+$$
+F=\begin{pmatrix}F_0\\E_{\mathrm{connection}}\end{pmatrix},
+\qquad B=[B_0\mid0].
+$$
 
-每个 dual 层增加连接比特，进入两个对应 dual checks；内部 opposite connection check 作用在两端 primal 副本及相邻层连接比特。这里的 incidence 行不表示在存储码上直接测量两体算符。多于两个分支时依次连接相邻分支。原始数据校验只保留一份，但可延伸到多个辅助副本。
+Each added row has two ones and introduces a connection qubit in every dual layer. These rows describe ancilla connections; they are not direct two-qubit measurements on the memory. The implementation joins consecutive branches for more than two factors. The original memory checks occur only once.
 
-```text
+~~~text
 FIG3_BRANCHES(code, factors, target=None):
-    解析至少两个同型纯 X/Z 因子；拒绝支撑重叠
-    检查各因子是非平凡存储码 normalizer
-    product ← 因子的有符号 Pauli 乘积
-    target 未给出则取 product；否则要求完整有符号物理算符一致
-    各分支独立生成 Fi,Bi,Si
-    F0 ← blockdiag(Fi)；B0 ← concat(Bi)；S ← stack(Si)
-    按 Fig.3 连接分支，生成 F,B
-    用 F,B,S 创建交替层矩阵
-    验证对易、符号、witness 和最终逻辑读出
-    如连接后仍额外读出逻辑，抛 UnintendedLogicalMeasurementError
-```
+    parse at least two pure factors of the same Pauli type
+    require disjoint physical supports and nontrivial logical classes
+    product = signed Pauli product of factors
+    if target is supplied: require target == product as a signed physical Pauli
+    construct Fi, Bi, Si independently
+    F0 = blockdiag(Fi); B0 = concatenate(Bi); S = stack(Si)
+    add Fig. 3 connections and build alternating-layer matrices
+    verify commutation, signs, target witness, and actual logical readout
+    raise UnintendedLogicalMeasurementError if extra readout remains
+~~~
 
-两个 `[[4,2,2]]` 块的 `ZZIIZZII`：raw 有两个逻辑类别，必须拒绝。显式因子 `ZZIIIIII`、`IIIIZZII` 的 Fig. 3 输出只读出乘积。若一个因子本身包含两个独立块的 product，连接另一分支仍可能留下额外类别；仅有连接存在不能判定安全。
+For two independent `[[4,2,2]]` blocks, the unconnected target `ZZIIZZII` reads two logical classes and is rejected. Supplying the factors `ZZIIIIII` and `IIIIZZII` connects their measurements into one product. A factor that already contains unwanted logical information can still fail after connection.
 
-## 5. 最终 auxiliary 消元与完整逻辑检查
+## 5. Eliminating the auxiliary support
 
-统一用于 raw、Fig. 3 和 mixed。设 `C=[CX|CZ]`：
+This final check applies to pure, connected-factor, and mixed constructions. Let the output checks have binary halves $C_X,C_Z$, and define
 
-\[
-A=[C_{X,\mathrm{aux}}\mid C_{Z,\mathrm{aux}}],\quad L=\operatorname{rowbasis}(\ker A^T),\quad
-R_X=LC_{X,\mathrm{data}},\quad R_Z=LC_{Z,\mathrm{data}}.
-\]
+$$
+A_{\mathrm{aux}}=[C_{X,\mathrm{aux}}\mid C_{Z,\mathrm{aux}}],
+\qquad L=\operatorname{rowbasis}(\ker A_{\mathrm{aux}}^T).
+$$
 
-`L` 的行选择所有 auxiliary 作用消失的校验乘积。计算
+Rows of $L$ select all check products whose auxiliary support vanishes. Their memory components and logical signatures are
 
-\[
-\Gamma=[R_XJ_Z^T\mid R_ZJ_X^T],\qquad
-\alpha=[xJ_Z^T\mid zJ_X^T].
-\]
+$$
+R_X=LC_{X,\mathrm{memory}},\quad R_Z=LC_{Z,\mathrm{memory}},\qquad
+\Gamma=[R_XJ_Z^T\mid R_ZJ_X^T].
+$$
 
-成功要求
+For the requested target $P(x,z)$, set
+$\alpha=[xJ_Z^T\mid zJ_X^T]$. Success requires
 
-\[
+$$
 \alpha\ne0,\qquad
 \operatorname{rank}\Gamma
 =\operatorname{rank}\begin{pmatrix}\Gamma\\\alpha\end{pmatrix}=1.
-\]
+$$
 
-另外验证 memory image 与原稳定子对易、全部输出 checks 对易、有符号 witness 等于完整物理目标，以及全部 check dependencies 产生 `+I`。witness 只证明目标可读出；完整行空间才排除额外逻辑测量。失败抛 `UnintendedLogicalMeasurementError(ValueError)`，其属性记录实际逻辑 rank、测得的 signature 基及目标 signature。
+Validation also checks commutation with the original stabilizers, pairwise output-check commutation, signed target witnesses, and positive identity for every check dependency. A witness proves that the target can be read; the full signature-space check excludes additional logical measurements.
 
-## 6. 主程序伪代码
+Failure raises `UnintendedLogicalMeasurementError(ValueError)`, recording the measured rank, measured signature basis, and target signature.
 
-```text
-CKBB_DEFORM(code, logical=None, logical_factors=None, type=Z, r=None):
-    检查 CSS 对易、输入二进制、参数
-    JX,JZ ← STANDARD_LOGICALS(code)
-    r 默认 code.distance（已给出时），否则 code.n
-    若 factors 已给出：
-        解析同型、不相交、至少两个因子；derive/核对有符号目标
-        bridge=False 时拒绝 Fig.3
-        output ← FIG3_BRANCHES(code, factors, target)
-    否则：
-        若 logical 未给出：取指定 standard-form X/Z/Y 生成元
-        检查目标非零、非稳定子且与存储校验对易
-        若目标纯 X/Z：
-            F,B,S ← 原始支撑 restriction
-            K ← ker(F)；Q ← KS；M ← Q J_conjugate^T
-            output ← 原始交替层矩阵
-        否则：output ← CKBB_MIXED(code, x,z,bridge)
-    生成有符号 witness
-    执行最终 auxiliary 消元和完整 signature 检查
-    失败立即抛异常；仅在通过后生成适用的 CSS cycle gauges
-    返回矩阵、witness、gauges、元数据
-```
+## 6. Main pseudocode
 
-## 7. Mixed Pauli：Fig. 4/5
+~~~text
+CKBB_DEFORM(code, logical=None, logical_factors=None, pauli=Z, layers=None):
+    validate binary CSS checks and parameters
+    JX, JZ = paired logical generators from Gaussian elimination
+    r = layers, or code.distance when given, otherwise code.n
 
-```text
-CKBB_MIXED(code, x,z,bridge):
-    分别建立 X(x)、Z(z) 的原始纯分支
-    保留一份存储校验及两个分支提供的对应延伸
-    overlap ← supp(x) ∩ supp(z)
-    若 overlap 非空：
-        按 Fig.4，每个交叠点、每层融合对应 dual checks
-        每个内部层添加相对 ZX check
-    否则：
-        bridge=False 时拒绝所需 Fig.5 connector
-        分支生长虚拟端点/连接臂，再融合边界 dual checks
-    用 canonical Hermitian Pauli 算术解一致校验符号
-    验证 witness、无 -I、完整 logical-readout signature
-```
+    if logical_factors is supplied:
+        require bridge=True
+        parse disjoint pure factors of the same type
+        derive or verify their signed product
+        output = FIG3_BRANCHES(code, factors, target)
+    else:
+        choose one basis generator if logical is omitted
+        require a nontrivial logical target
+        if target is pure X or Z:
+            construct original support restriction F, B, S
+            output = alternating-layer construction(F, B, S, r)
+        else:
+            output = CKBB_MIXED(code, x, z, bridge)
 
-mixed 的 X/Z 支撑交叠是 Fig. 4 的输入；同型 Fig. 3 的不相交限制不适用于此。采用 `P(x,z)=i^(sum xz)X(x)Z(z)`，所以重叠位表示字面 `Y`。mixed 输出通常为非 CSS stabilizer 码，两半不能分别当 `HX,HZ`。
+    construct a signed target witness
+    eliminate auxiliary support and verify exact logical readout
+    construct applicable CSS cycle gauges after successful validation
+    return matrices, witnesses, gauges, and metadata
+~~~
 
-## 8. Gauge、距离和范围
+## 7. Mixed Pauli targets: Figs. 4 and 5
 
-`ker F^T` 产生 opposite-Pauli cycle 候选；模掉输出 opposite-check row space 后，选择独立 gauge 并配对。成功纯 CSS 输出满足
+~~~text
+CKBB_MIXED(code, x, z, bridge):
+    build pure branches for X(x) and Z(z)
+    retain one copy of the memory checks with their branch extensions
+    overlap = support(x) intersect support(z)
+    if overlap is nonempty:
+        fuse the appropriate dual checks at every overlap and layer (Fig. 4)
+        add the relative ZX checks on internal layers
+    else:
+        require bridge=True
+        extend branch ends and join their boundary dual checks (Fig. 5)
+    solve consistent check signs using Hermitian Pauli arithmetic
+    verify the signed witness, absence of -I, and exact logical readout
+~~~
 
-\[
-k_{\mathrm{protected}}=k-1,\quad
-g=N-\operatorname{rank}H_X'-\operatorname{rank}H_Z'-(k-1),\quad
+The disjoint-support requirement of §4 concerns factors of the same type; it does not exclude overlap between the X and Z parts of a mixed target. The convention is
+
+$$
+P(x,z)=i^{\sum_jx_jz_j}X(x)Z(z),
+$$
+
+so a site with $x_j=z_j=1$ is a literal Y. A mixed output is generally a non-CSS stabilizer code: `check_x` and `check_z` are halves of the same Pauli rows, not independent CSS check sets. In particular, the pure-layer identity connections in §3 cannot simply be reused unchanged for the fused mixed construction.
+
+## 8. Gauges, distance, and scope
+
+For a successful pure CSS construction, $\ker F^T$ supplies opposite-Pauli cycle candidates. Independent candidates modulo the output opposite-check space are paired as gauge operators, rather than added as measured checks. The counts satisfy
+
+$$
+k_{\mathrm{protected}}=k-1,\qquad
+g=N-\operatorname{rank}H_X'-\operatorname{rank}H_Z'-(k-1),\qquad
 G_XG_Z^T=I_g.
-\]
+$$
 
-gauge 与 measured checks 对易，低重量 cycle 不属于受保护的存储逻辑。`r` 计 dual 层，共 `2r−1` 层；原文 `2d−1` 层对应 `r≥d`。输入距离由调用者声明；逻辑读出安全不能代替支撑假设和 fault-distance 证明。距离认证单独检查原文支撑条件，包括 Fig. 3 各分支条件，不满足时给未知下界。
+These gauge operators commute with the measured checks. Their weight is not the protected memory distance.
 
-本版输入 CSS stabilizer 码，没有接入原始 subsystem/gauge 或一般非 CSS 存储码。`ckbb_batch` 生成独立输出，不声称同时测量；本版不含 syndrome 电路、解码器或电路级距离仿真。
+`layers=r` counts dual layers; there are $2r-1$ alternating auxiliary Tanner layers. The original $2d-1$-layer choice corresponds to $r\ge d$. A supplied `code.distance` is an input assumption. The implementation reports a distance certificate only when its layer and support conditions apply; the logical-readout check alone is not a distance proof. In particular, connected factors are checked against the appropriate support conditions separately.
 
-参考：[CKBB](https://arxiv.org/abs/2110.10794)，[CKBB Fig. 3](https://pmc.ncbi.nlm.nih.gov/articles/PMC10926894/#F3)，[Zhang–Li Appendix A](https://arxiv.org/html/2408.01339v3#A1)。
+The input is a CSS stabilizer code. General non-CSS or subsystem memory inputs, syndrome circuits, decoders, and circuit-level distance simulation are outside this module. `ckbb_batch` builds independent outputs and does not certify their simultaneous execution.

@@ -323,7 +323,7 @@ def ensure_distance(result, *, max_base_degree=12, max_cycle_weight=None,
             evaluated = {}
 
             def evaluate_candidate(graph, context):
-                # Evaluate the code we would return, including full flux closure
+                # Evaluate the code we would return, including all cycle checks
                 # and cycle sparsification. No graph certificate is computed here.
                 candidate_matching = np.pad(m, ((0, 0), (0, len(graph) - len(b))))
                 try:

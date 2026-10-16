@@ -80,7 +80,7 @@ def prepare_targets(code, targets=None, *, logical_paulis=None, pauli="Z",
     ``pauli`` plus zero-based ``logical_indices`` (default: Z on every logical
     qubit). A single string/index is accepted as a one-element collection.
     A supplied basis must be a dict with exactly k paired pure ``jx``/``jz``
-    rows. Otherwise Zhang--Li standard-form representatives are used.
+    rows. Otherwise representatives from the paired CSS standard form are used.
 
     ``preserve`` requires the supplied physical representatives to be QWC.
     ``auto`` preserves them exactly if QWC, otherwise tries the SAME logical

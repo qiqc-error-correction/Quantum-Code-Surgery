@@ -279,7 +279,7 @@ def ckbb_deform(code, logical=None, *, pauli="Z", logical_index=0, layers=None,
 
     logical: physical I/X/Y/Z string, binary vector with pauli=X/Z, or
     {x: binary vector, z: binary vector, sign: 0/1}. Omitted logical uses
-    the first Z generator of the Zhang--Li standard-form basis by default.
+    the first Z generator of the paired CSS standard form by default.
     CSSCode.distance is an asserted input distance, not computed here.
     Omitted distance and layers uses r=n, a conservative upper bound on d.
     logical_factors explicitly requests Fig. 3 parity bridging for disjoint,

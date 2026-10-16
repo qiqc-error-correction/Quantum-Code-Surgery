@@ -1,7 +1,9 @@
 """Two-layer branching stickers for arbitrary signed stabilizer checks.
 
-This is the matrix form of the locally compatible branching construction in
-Lemma 2.10 of arXiv:2503.05003v3. The local Pauli axis is chosen once on each
+CSS branch stickers originate in Zhang--Li, arXiv:2408.01339, Sections III--V
+and Appendices C, D, and F. The locally compatible Pauli extension follows
+Cowtan et al., arXiv:2503.05003v3, Lemma 2.10.
+The local Pauli axis is chosen once on each
 site in the union. Branching introduces no logical measurement: targets move
 to leaf representatives, while the full logical space has an explicit lift.
 """

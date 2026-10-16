@@ -1,34 +1,20 @@
-# Explicit gadget、Universal adapter 与 gauging measurement
+# Explicit gadgets and gauging measurement: matrices and pseudocode
 
-本版完善 `codesurgery.explicit_gadgets`，并增加 `universal_adapters` 和
-`gauging_measurement`。CKBB 与 devised sticking 使用原有实现。
+This English guide retains its existing filename for compatibility.
+It describes `codesurgery.explicit_gadgets`, `universal_adapters`, and
+`gauging_measurement`. CKBB and devised sticking have separate implementations.
 
-论文依据：
+The explicit single-observable gadget follows
+[Webster–Smith–Cohen, Section II.1](https://arxiv.org/html/2511.15989v1#S2.SS1).
+The Tanner boundary-expansion framework is developed in
+[Cross–He–Rall–Yoder](https://arxiv.org/abs/2407.18393).
+The graph adapter follows [Swaroop–Jochym-O'Connor–Yoder](https://arxiv.org/abs/2410.03628),
+with Lemmas 9 and 10 numbered as in version 4. The alternative auxiliary-graph
+construction follows [Williamson–Yoder](https://arxiv.org/abs/2410.02213).
+The implemented route is not WSC's full universal architecture based on
+fixed seed gadgets, automorphism routing, and overlapping-gadget merges.
 
-- [Webster–Smith–Cohen，2025，Sec. II.1](https://arxiv.org/html/2511.15989v1#S2.SS1)：单算符基础 gadget。
-- [Swaroop–Jochym-O’Connor–Yoder，2024 初稿](https://arxiv.org/html/2410.03628v1)：Universal adapters，SkipTree 与 repetition adapter。
-  [v4 的 Sec. III、IV](https://arxiv.org/html/2410.03628#S4) 给出同一核心构造及更一般的条件；本文的 Lemma 9/10 编号采用 v4。
-- [Williamson–Yoder，2024 初稿](https://arxiv.org/html/2410.02213v1)：gauging logical measurement。
-
-**Python API 默认自动计算码距并按需处理**，可用 `require_distance=False` 关闭。基础构造本身不自动补扩展边；自动处理只在实际距离不足时增强扩展，且按初始水平 memory 拼接块 `[H | M]` 的最大行重量检查稀疏度。历史上的 `expansion='auto'/'star'/'complete'` 仍是显式选择的附加启发式，
-不是 WSC 论文规定的补边算法；它们也不能绕过原始 F 的逻辑读出检查。双因子联合测量只使用下述 adapter。
-
-## 运行
-
-在 PyCharm 中可运行 [BB90 示例](examples/bb90_compare.py)，比较输入代表减重前后的构造与 overhead。也可以通过包的命令行处理自己的 `input.json`：
-
-```bash
-python -m codesurgery.explicit_gadgets input.json -o deformed.json
-python -m codesurgery.gauging_measurement input.json -o gauging.json
-```
-
-输入 JSON 需包含原码的 `hx,hz` 和待测算符。
-`scheme` 可为 `explicit` 或 `gauging`；`logical` 表示一个待测可观测量，`logicals:[L1,L2]` 表示只测量其乘积。
-这里旧称“双目标”的接口实际是**双因子联合测量**：输入 L1、L2，读出一个 ±1 结果，
-测量投影为 `(I ± L1 L2)/2`。例如输入逻辑 X1 与 Z2，测量的是逻辑 X1Z2，
-不会分别获得 X1、Z2 的两个结果。单目标自身也可以是逻辑乘积，例如直接输入 X1Z2 的完整物理代表。
-
-## 输入逻辑基、Y 和混合 XZ
+## API and targets
 
 ```python
 from codesurgery import CSSCode
@@ -36,286 +22,343 @@ from codesurgery.explicit_gadgets import gadget_deform, gadget_pair_deform
 from codesurgery.gauging_measurement import gauging_deform, gauging_pair_deform
 
 code = CSSCode(HX, HZ, distance=d)
-result = gadget_deform(code, logical="YXXZZIIIIIIIIII")
-pair = gadget_pair_deform(code, left=L1, right=L2)
+single = gadget_deform(code, logical=L)
+joint = gadget_pair_deform(code, left=L1, right=L2)
+alternative = gauging_deform(code, logical=L)
 ```
 
-不提供逻辑基时使用 Zhang–Li standard form。可传入
-`logical_basis={"jx": JX, "jz": JZ}`，其中两者都是 k×n 的纯 CSS 配对逻辑基；
-程序验证 normalizer 条件和 `JX @ JZ.T = I`。物理列始终保持输入 code 的原始顺序。
+`L`, `L1`, and `L2` are physical Pauli representatives of length `code.n`.
+The pair interface measures **one product** `L1 * L2`, with projectors
+`(I ± L1 L2)/2`, rather than measuring its factors separately. A single target
+may itself be a logical product, such as X on one encoded qubit and Z on
+another.
 
-不提供目标时，单目标默认 Z0；可指定 `pauli='X'/'Y'/'Z'` 和 `logical_index`。
-联合测量的两个因子默认 Z0、Z1，使用 `paulis` 和 `logical_indices` 修改。默认代表可能有物理重叠；此时 adapter 接口报错。
+All four builders default to `require_distance=True`. This invokes combined
+distance certification, expansion when needed, and sparsity processing.
+`require_distance=False` returns the algebraic base construction without that
+processor. The legacy `expansion="auto"/"star"/"complete"` options are explicit
+implementation heuristics, not WSC's specified edge-selection algorithm;
+they cannot bypass input readout checks.
 
-目标可以是带正负号的 IXYZ 字符串、物理 `{x,z,sign}`、二进制向量加 `pauli`，或者逻辑基系数：
+An optional `logical_basis={"jx": JX, "jz": JZ}` supplies paired pure CSS
+logical generators. The code checks their normalizer conditions and
+`JX @ JZ.T = I` over GF(2). If omitted, binary Gaussian elimination provides
+a basis in the original physical column order. Targets can be signed IXYZ
+strings, physical `{x, z, sign}` dictionaries, binary vectors with `pauli`,
+or coefficient dictionaries such as
 
 ```python
-# 测量配对逻辑基中的 X0 Z1，系数长度为 k。
-logical = {"logical_x": [1,0,...], "logical_z": [0,1,...]}
+import numpy as np
+
+# X on logical qubit 0 and Z on logical qubit 1; requires code.k >= 2.
+alpha = np.zeros(code.k, dtype=np.uint8)
+beta = np.zeros(code.k, dtype=np.uint8)
+alpha[0] = beta[1] = 1
+logical = {"logical_x": alpha, "logical_z": beta}
 ```
 
-逻辑系数采用 `i^(alpha·beta) Xbar(alpha) Zbar(beta)` 的 Hermitian 约定。
-特别是 `pauli='Y'` 表示 `i Xbar_j Zbar_j`，物理 Pauli 字符串前可能带负号。
-例如物理代表 XXX 与 ZZZ 对应 `i XXX ZZZ = -YYY`。符号单独保存在 `check_signs` 和 `measurement_sign` 中。
+Logical coefficients use the Hermitian convention
+`i^(alpha.dot(beta)) Xbar(alpha) Zbar(beta)`. In particular, logical Y is
+`i Xbar_j Zbar_j`; its physical string may carry a minus sign. For example,
+`i XXX ZZZ = -YYY`. `check_signs` and `measurement_sign` preserve these signs.
+Python logical indices start at zero. With no target, the single route
+selects Z0; the pair selects Z0 and Z1. Their representatives must still pass
+the pair route's physical-disjointness check.
 
-一个 Y 或混合 Pauli 目标直接按 `(x|z)` 构造。双因子 adapter 当前实现要求物理支撑不重叠，
-因此可处理不重叠的 XZ、YZ 等乘积。重叠的因子会提示使用完整 Hermitian 目标调用 `gauging_deform`；
-例如逻辑 Y 应使用 `pauli='Y'`，而不是把反对易的 X、Z 因子直接当作一个可测乘积。
+The single-target builders default to `optimize_logical=False`. Enable it to try
+stabilizer-based weight reduction before construction, or use
+`compare_deformations` to build both representatives and compare overhead.
+Supplied graph blocks must match the representative actually used.
+For the native pair interfaces, reduce factors separately and recheck their
+physical disjointness before constructing the adapter.
 
-## 单目标 F 的检查
+## Extracting and checking F
 
-将 memory 全体校验写成 `C=(CX|CZ)`。目标为 `(x|z)`，支撑 V 的大小为 w。
-S 为 w×n 的支撑选择矩阵，定义
+Write all memory checks as `C = (CX | CZ)`, with X rows followed by Z rows
+for a CSS input. A target `(x | z)` has support `V` of size `w`, and `S` is
+the `w × n` selector for that support. All matrix arithmetic below is over
+GF(2). Define
 
 ```text
-F_full[j,u] = CX[j,V[u]] z[V[u]] + CZ[j,V[u]] x[V[u]]  (mod 2)
-F = F_full 的所有非零行
+F_full[j,u] = CX[j,V[u]] z[V[u]] + CZ[j,V[u]] x[V[u]]
+F = all nonzero rows of F_full
 ```
 
-这里不对 F 作行基约简；重复行对应不同辅助比特。纯 X 时就是 HZ 限制到目标支撑，纯 Z 时取 HX。
+No row-basis reduction is applied to `F`: repeated restriction rows correspond
+to different auxiliary qubits. For pure X, `F` is the nonzero restriction of
+`HZ`; for pure Z it is the nonzero restriction of `HX`.
 
-单目标 explicit 路径按以下规则运行：
+The single-observable explicit route checks:
 
-1. 目标与 memory 校验对易，因此 F 的每个非零行具有偶数重量；**不要求重量恰好为 2**。
-2. 若输入了可信的原码距离下界 d 且 w<2d，免去本步骤的 kernel 逻辑信息预检。
-3. 否则计算 K=ker(F)、QX=(KS)diag(x)、QZ=(KS)diag(z)。其逻辑签名空间必须等于目标的一维 span。
-   发现额外独立逻辑信息时抛出 `GaugeMeasurementRequired`。
-4. 使用完整的辅助核 `N=ker(Fᵀ)`，秩为 `行数(F)-rank(F)`。
-   不要求普通图连通；额外 kernel 方向若只对应原码 stabilizer，不应误报为额外逻辑测量。
+1. The target is a nontrivial logical Pauli. Its commutation with memory
+   checks makes every nonzero `F` row even; the row need not have weight two.
+2. If a trusted source-distance lower bound `d` is available and `w < 2d`,
+   the Pauli-aligned kernel precheck can be skipped.
+3. Otherwise, let the rows of `K` span `ker(F)`. Form
+   `QX = (K S) diag(x)` and `QZ = (K S) diag(z)`. Their logical-signature space
+   must be exactly the one-dimensional target space. Extra independent
+   logical information raises `GaugeMeasurementRequired`.
+4. Use a full row basis `N` of `ker(F.T)`, of rank
+   `F.shape[0] - rank(F)`. Kernel directions that represent source stabilizers
+   are allowed. Ordinary-graph connectivity is not required for this route.
 
-只有双因子 adapter 路径额外要求：每个 F_i 的非零行重量恰好为 2，并且普通图连通。
-这些条件使 SkipTree 可以运行；失败会报错并提示使用 gauging measurement。
+The `w < 2d` shortcut only concerns suboperators aligned with the target's
+local Pauli. If such a suboperator represented a logical class independent
+of the target, it and its complementary suboperator would be nontrivial
+logicals on disjoint supports, implying `w >= 2d`. Supported stabilizers are
+not excluded by this argument. Equality `w = 2d` does not qualify.
 
-第 2 步只针对与目标局部 Pauli 对齐的子算符。若存在独立逻辑 Q，它的补算符 LQ 也是非平凡逻辑，
-二者支撑不交且重量之和为 w，于是 w≥2d，矛盾。这不排除支撑内的 stabilizer；单目标接受这些方向，adapter 路径仍需检查普通图连通性。
-`w=2d` 不满足快捷条件；没有 d 也会完整做预检。
+The shortcut never skips final commutation, phases, full readout validation,
+or the adapter's graph conditions. It is not a distance-preservation proof.
 
-**w<2d 不会免去 adapter 路径的图条件、对易、相位以及最终实际读出检查，也不是距离保持证书。**
+## Base matrices for general Pauli targets
 
-## 基础矩阵与一般 Pauli
-
-纯 X 情况，T 将 F 的每一行映射到对应的 memory Z 校验；N 是 ker(Fᵀ) 的行基：
+For pure X, let `T` map the rows of `F` to the original Z checks. Then
 
 ```text
 HX_new = [ HX   0  ]       HZ_new = [ HZ  T ]
-         [ S   Fᵀ ]                [ 0   N ]
+         [ S   F.T ]                [ 0   N ]
 ```
 
-通用辛形式采用辅助关联矩阵 B（辅助比特×顶点）、port selector S（顶点×memory）及 dressing M。
-单目标中 B 可以具有重量大于 2 的偶数行；普通图只是特例：
+The general signed symplectic construction uses `B` with auxiliary-qubit
+rows and vertex columns, a vertex-to-memory port selector `S`, and a memory
+check dressing matrix `M`. Ordinary graphs have weight-two rows of `B`;
+the single explicit route also permits more general even rows.
 
 ```text
-M B = (CX diag(z) + CZ diag(x)) Sᵀ
-N B = 0,    rank(N) = 行数(B) - rank(B)
+M B = (CX diag(z) + CZ diag(x)) S.T
+N B = 0,    rank(N) = number_of_rows(B) - rank(B)
 
-check_x = [ CX        0  ]       check_z = [ CZ        M ]
-          [ S diag(x) Bᵀ ]                 [ S diag(z) 0 ]
-          [ 0         0  ]                 [ 0         N ]
+check_x = [ CX         0  ]       check_z = [ CZ         M ]
+          [ S diag(x) B.T ]                 [ S diag(z) 0 ]
+          [ 0          0  ]                 [ 0          N ]
 ```
 
-每个 memory 支撑位置恰好接到一个 port；允许图中有不接 memory 的 dummy 顶点。
-所有顶点校验相乘得到目标。纯 Z 时实现对所有辅助比特作 Hadamard 对偶，使输出仍然是 CSS。
-Y 和混合 XZ 使用完整 `check_x/check_z/check_signs`，两半同一行表示同一个 Pauli 校验。
+Every memory support position is assigned to one port; dummy vertices may
+have no memory qubit. Multiplying all vertex checks produces the target.
+Signs are solved separately. For a pure Z target, the implementation applies
+the auxiliary Hadamard dual convention so that the final code is CSS.
+For Y or mixed XZ targets, the two halves of a row in
+`check_x/check_z/check_signs` describe one Pauli check.
 
-## 双因子联合测量：SkipTree repetition adapter
+## Two-factor products: SkipTree repetition adapter
 
-分别检查 L_l、L_r 的逻辑读出，再要求 F_l、F_r 为连通的重量 2 普通图。
-得到各自 dressing M_l、M_r。memory 校验只有一份；
-同一原始校验可能同时接到左右两个辅助图。
+Each factor first passes its own logical-readout check. The implemented
+adapter additionally requires disjoint physical factor supports and connected
+ordinary graphs `F_l`, `F_r`, whose nonzero rows all have weight two. These
+are restrictions of this interface; the cited adapter paper treats broader
+compatible-overlap cases. A logical Y should be supplied as its complete
+Hermitian target, for example with `pauli="Y"`, rather than as the bare
+product of anticommuting X and Z factors.
 
-选择左右各 A 个顶点，其诱导子图必须连通。默认 A=min(|V_l|,|V_r|)，用 BFS 前缀选择连通顶点集。
-可显式指定 `adapter_size`、`adapter_vertices=(left_vertices,right_vertices)`。
+There is one copy of the memory checks. A memory check can be dressed on
+both auxiliary graphs. Select `A` vertices on each side, each inducing a
+connected subgraph. The default is `A = min(|V_l|, |V_r|)`, selected through
+a BFS prefix; `adapter_size` and `adapter_vertices` can override this choice.
 
-SkipTree 从生成树出发，交替使用先序/后序标签；相邻循环标签之间取树路径。
-得到 T_l、T_r、P_l、P_r 和循环 repetition check matrix H_C，使得
+SkipTree supplies `T_l`, `T_r`, `P_l`, `P_r`, and a cyclic repetition check
+matrix `H_C` satisfying
 
 ```text
-T_l F_l = H_C P_lᵀ,      T_r F_r = H_C P_rᵀ.
+T_l F_l = H_C P_l.T,      T_r F_r = H_C P_r.T.
 ```
 
-T 的每行重量至多 3、每列重量至多 2。P_i 是 |V_i|×A 的选点排列矩阵。
-按左右相同标签连接 A 条 adapter 边，每条边对应一个真实辅助比特。列顺序为
-`(memory, left_edges, adapter_edges, right_edges)`。
+Each `T` has row weight at most three and column weight at most two.
+`P_i` has shape `|V_i| × A` and selects the labeled vertices. Connect matching
+labels with `A` new edges, each holding one auxiliary qubit. The assembled
+blocks are
 
 ```text
-B = [ F_l   0   ]        N = [ N_l   0    0   ]
-    [ P_lᵀ P_rᵀ ]            [ T_l  H_C  T_r ]
-    [ 0     F_r ]            [ 0     0    N_r ]
+B = [ F_l    0   ]       N = [ N_l   0    0   ]
+    [ P_l.T  P_r.T ]        [ T_l  H_C  T_r ]
+    [ 0      F_r ]          [ 0     0    N_r ]
 
 M_joint = [ M_l   0_A   M_r ]
 ```
 
-新增 cycle 校验 `[T_l H_C T_r]` 的重量至多 8，每条旧边被这些新校验使用至多两次。
-保留这些稀疏生成元，不用任意 RREF 核基替换；A 个循环生成元通常只有 A−1 个独立。
-A=1 时省略唯一的零 cycle 行。
+Physical column order is `(memory, left_edges, adapter_edges, right_edges)`.
+The added connector cycle checks have weight at most eight and add at most
+two uses of an old edge. There are `A - 1` independent connector cycles;
+the displayed cyclic generators may be redundant. For `A = 1`, the zero
+connector row is omitted. Sparse generators are retained rather than
+replaced by an arbitrary reduced kernel basis.
 
-最后用 B、M_joint、N 和联合 port 构造 deformed code。程序检查整个实际校验群，
-要求只能读出 L_l L_r，不能分别读出 L_l 或 L_r。
+The final full check group must read out only `L_l L_r`, not either factor
+separately. An inadequate adapter size can still reduce distance; SkipTree's
+sparsity bound alone is not a distance guarantee.
 
-## 基础构造伪代码
-
-下面先展开基础矩阵构造。公开 Python API 默认再调用本文末尾的自动码距与稀疏化流程；`require_distance=False` 才直接返回这里的基础结果。
+## Construction pseudocode
 
 ```text
-EXPLICIT(code, targets, optional_basis):
-    basis = optional_basis 或 Zhang–Li standard form
-    解析带符号的目标，检查非平凡 normalizer 条件
+EXPLICIT_BASE(code, one_target_or_two_factors, optional_basis):
+    basis = supplied paired CSS basis, or compute one by Gaussian elimination
+    parse signed targets and check nontrivial normalizer membership
 
-    对每个目标 L_i:
-        提取 F_i：局部反对易矩阵的全部非零行
-        如果 d 未知，或者 wt(L_i) >= 2d:
-            K_i = ker(F_i)
-            Q_i = 与目标局部 Pauli 对齐的 K_i S_i
-            Gamma_i = logical_signature(Q_i, basis)
-            如果 rowspace(Gamma_i) != span(signature(L_i)):
-                ERROR("测量了额外逻辑信息；请使用 gauging measurement")
+    for each factor L_i:
+        extract all nonzero restriction rows F_i
+        if d is unknown or wt(L_i) >= 2d:
+            K_i = a row basis of ker(F_i)
+            Q_i = K_i S_i with the local Paulis of L_i
+            require logical_signature_space(Q_i) == span(signature(L_i))
+            otherwise raise GaugeMeasurementRequired
 
-    如果只有一个目标:
+    if there is one target:
         B = F_1
-        M = 原始校验到 F_1 行的选择矩阵
-        N = ker(Bᵀ) 的完整行基，维数 = 行数(B) - rank(B)
+        M = selection of original checks associated with F_1 rows
+        N = a full row basis of ker(B.T)
         target = L_1
-    否则:  # 输入两个因子，仅测量它们的乘积
-        对 F_1、F_2:
-            如果任一非零行重量不是 2:
-                ERROR("adapter 要求重量 2；请使用 gauging measurement")
-            如果普通图不连通:
-                ERROR("SkipTree 需要连通图；请使用 gauging measurement")
-        如果两个目标有物理支撑交叠:
-            ERROR("用完整 Hermitian 目标进入 gauging measurement")
-        为 F_1、F_2 选择等大小的连通诱导子图
-        运行 SkipTree，得到 T_1,P_1,T_2,P_2,H_C
-        按上面的块矩阵构造 B、M_joint、N
-        target = 带正确符号的 L_1 L_2
+    else:
+        require disjoint physical factor supports
+        require each F_i to have weight-two rows and connected graph
+        otherwise raise GaugeMeasurementRequired
+        select equal-sized connected induced vertex sets
+        run SkipTree and assemble B, M_joint, N as above
+        target = signed Hermitian product L_1 L_2
 
-    构造 memory、vertex、cycle 三组辛校验
-    解符号：memory/cycle 正号，无 -I 依赖，顶点乘积等于 signed target
-    VALIDATE_ACTUAL_READOUT(全部校验, target, basis)
-    检查剩余逻辑比特数 k-1
-    普通图报告相对扩展；一般单目标 Tanner 矩阵报告奇偶边界 h(F)
-    基础步骤不自动补扩展边
-    封存构造与证书，返回基础 deformed code
+    assemble memory, vertex, and cycle symplectic checks
+    solve signs, excluding -I dependencies and matching the target product
+    validate commutation, signed readout, and remaining logical dimension k-1
+    report the applicable boundary/relative expansion certificate
+    return the sealed base deformed code
 
 VALIDATE_ACTUAL_READOUT(CX_new, CZ_new, target, basis):
     A = [CX_new[:,aux] | CZ_new[:,aux]]
-    U = ker(Aᵀ)
+    U = a row basis of ker(A.T)
     RX = U CX_new[:,memory]
     RZ = U CZ_new[:,memory]
-    Gamma = row_basis([RX JZᵀ | RZ JXᵀ])
-    如果 rowspace(Gamma) != span(signature(target)):
-        ERROR("实际构造读出额外逻辑；请使用 gauging measurement")
+    Gamma = row_basis([RX JZ.T | RZ JX.T])
+    require rowspace(Gamma) == span(signature(target))
+    otherwise raise an unintended-logical-readout error
+    separately validate phases and the signed target witness
 ```
 
-以上实际读出检查在构造、验证及保存时执行。修改结果对象的矩阵或证书后，summary/validate/save 会拒绝旧快照。
+The public builders apply the distance processor after this base stage
+unless `require_distance=False`. Validation also runs when the result is
+validated or saved. Changing matrices or certificates invalidates the stored
+snapshot.
 
-## Gauging measurement 框架及 adapter
+## The separate gauging route
 
 ```python
-# 单目标读出额外逻辑信息，或联合测量的 F 不符合 adapter 图条件时，调用这条路线。
-r = gauging_deform(code, logical)
-
-# 指定自己的图、port、dressing 和稀疏 cycle 基。
-r = gauging_deform(code, logical, graph=B, ports=ports,
-                   matching=M, cycle_basis=N)
-
-# 左右各自构造辅助图，再按同一个 SkipTree adapter 连接。
-r = gauging_pair_deform(code, L1, L2, graphs=(B1, B2))
+result = gauging_deform(code, logical=L)
+result = gauging_deform(
+    code, logical=L, graph=B, ports=ports, matching=M, cycle_basis=N,
+)
+pair = gauging_pair_deform(code, L1, L2, graphs=(B1, B2))
 ```
 
-未给图时，对每个原始校验的偶数个反对易位置排序后两两配对，每对增加一个图边。
-若形成多个连通分量，再将分量代表串成链。每个原始校验在其配对边上获得辅助 Z 作用。
-这是论文 auxiliary-graph construction 的一个确定性配对选择；它只保证连通与正确读出，不声明扩展性或最优开销。
+Without a supplied graph, each check's even anticommuting boundary is paired
+in sorted order, adding one edge for each pair. `M` records which edges dress
+each memory check. Disconnected components are joined in a chain of
+**repetition-code adapters** by default (`component_connection="adapter"`).
+Each link joins two adjacent original components, with default size equal to
+the smaller component. `component_adapter_size` overrides the size;
+`component_adapter_shift=None` selects a cyclic rotation minimizing the
+heaviest connector check. Components representing stabilizers or dependent
+logical signatures are retained so that their product remains the target.
+
+`component_connection="chain"` instead selects one edge between successive
+component representatives. This simpler option is not the default adapter
+construction. Both choices ensure connectedness and correct readout; neither
+alone establishes expansion, distance, or optimal overhead. Component options
+apply only to automatically constructed graphs; a supplied graph is validated
+as supplied.
 
 ```text
-GAUGING(code, target, optional_graph):
-    解析 target 和 basis
-    如果未给图:
-        将各校验的偶数反对易边界分成二元配对边
-        连接图的不同分量
-        保存 dressing M 的每一行所使用的边
-    否则:
-        检查图的每行重量为 2，且连通
-        检查 port 为目标支撑到图顶点的单射
-        求解或核验 M B = 原始校验的 port 反对易边界
-    选择或核验完整 cycle 生成元 N
-    用统一辛矩阵构造并执行全部实际读出与符号检查
-    返回基础 flux-fixed deformed code 和协议框架
+GAUGING_BASE(code, target, optional_graph):
+    parse target and paired basis
+    if graph was not supplied:
+        pair each memory check's even local-anticommutation boundary
+        join adjacent components with repetition-code adapters by default
+        use single component-link edges only if component_connection="chain"
+        record the dressing M
+    else:
+        require a connected graph with weight-two incidence rows
+        require an injective support-to-vertex port assignment
+        solve or verify M B = the port anticommutation boundary
+    construct or validate complete cycle generators N
+    assemble the signed symplectic checks
+    validate commutation, full readout, signs, and logical dimension
+    return the base deformed code and measurement-stage metadata
 
-GAUGING_PAIR(code, L1, L2):
-    分别构造两个 connected auxiliary graphs 和各自 dressing
-    检查物理支撑不交叠
-    使用与 EXPLICIT_PAIR 相同的 SkipTree adapter
-    对最终乘积构造执行完整实际读出检查
+GAUGING_PAIR_BASE(code, L1, L2):
+    construct the two auxiliary graphs and their dressings
+    require disjoint physical supports
+    join them with the same SkipTree adapter
+    validate the final single-product readout
 ```
 
-这里实现的是 gauging 的静态、flux 已固定的 deformed code，而非任意非对易 gauge-generator 测量器。
-协议 metadata 包括辅助初始化、顶点测量的乘积读出以及辅助测出方式；尚未编译带噪声的 syndrome 电路。
+The result is a static deformed stabilizer code with a complete set of cycle
+checks. It is not a general noncommuting gauge-generator measurement engine.
+The metadata describes initialization and measurement stages, without a
+compiled noisy syndrome circuit.
 
-## 距离和 LDPC 的界限
+## Distance and LDPC conditions
 
-普通连通图路径检查相对扩展
+For an ordinary graph with ports `U`, the relative expansion used is
 
 ```text
-beta_d(B, ports) = min wt(Bv) / min(d, |v∩ports|, |ports|-|v∩ports|)
+beta_d(B,U) = min wt(Bv) / min(d, |v intersect U|, |U|-|v intersect U|),
 ```
 
-只考虑分母非零的 v。小图精确枚举；图过大时保留 unknown，或使用已验证的组合证书：
-左右 beta_d≥1、adapter 所选点都在 ports 中且 A≥d，则由 Universal adapters Lemma 9 得到合并图 beta_d≥1。
-`wt(L)<2d` 与这个距离检查不是同一个条件。
+over subsets with a nonzero denominator. A lower bound of one suffices under
+the graph construction's other hypotheses. Small graphs are checked by exact
+cut enumeration. For an adapter, Lemma 9 can combine two certified branch
+bounds when the selected vertices are ports and `A >= d`.
 
-一般单目标 Tanner 矩阵另外检查 `h(F)=min wt(Fv)/wt(v)`，其中 `0<wt(v)≤w/2`，
-采用奇偶边界而非普通超图边界。使用 `h(F)≥1` 作为静态距离保持的充分条件；不套用普通图连通性推导的界。
+For a general single-target Tanner matrix, the relevant parity-boundary
+constant is `h(F) = min wt(Fv)/wt(v)` for `0 < wt(v) <= w/2`. Here boundary
+means odd incidence. `h(F) >= 1` is the cited sufficient condition; ordinary
+graph connectivity arguments cannot replace it.
 
-上述是图的充分条件；不满足它们不代表实际距离下降。默认自动模式另外计算原码及完整输出码的真实静态距离，未提供原码 distance 时可从精确计算得到目标。若提供 distance，则仍将它视为可信下界，并拒绝与实际逻辑见证冲突的声明。
-只有实际逻辑见证证明距离不足才增强扩展；未知且没有有效距离定理证书时提示增加预算。
-完整校验默认必须满足初始水平 memory 拼接块 `[H | M]` 的最大行重量阈值，cycle 过长或拥塞过大时按需稀疏化。
-详见 [自动码距与稀疏化模块](DISTANCE_PRESERVATION_ZH.md)。还会检查完整列参与次数、matching 和 cycle 的拥塞；
-一个有限例子通过这些检查不自动证明整个码族 LDPC。SkipTree 保证的是连接新增部分的稀疏性。
+Failure of these sufficient conditions does not prove distance loss. The
+automatic processor searches the actual full stabilizer code as well. A
+supplied source distance is a trusted lower bound, rejected if contradicted
+by a logical witness. With no supplied distance, an exact finite source
+distance is required to choose the target. The output need only have a
+valid threshold lower bound; its exact distance may remain unknown.
 
-## 已运行的例子
+By default, unresolved output distance without a graph certificate can
+trigger bounded expansion attempts (`unknown_distance_policy="certify"`).
+This is recorded as a missing certificate, separately from an actual deficit.
+Use `unknown_distance_policy="error"` to stop in that case. Overweight or
+congested cycle checks first prompt cycle-basis optimization, then layering
+and cellulation if needed. Final rebuilt matrices are searched and checked
+again. Full row and column caps remain fixed throughout.
 
-- Hamming 单 Y：`YXXZZIIIIIIIIII`，原始 F 为路径；19 比特，13 个独立校验，保留 6 个逻辑比特。h=1/2。
-- 同一 Hamming code 的 X1X2X3 与 Z4Z8Z12：分别提取两个 F，各 2 条边；adapter 增加 3 条边。
-  最终 22 比特，17 个校验生成元、秩 16，保留 6 个逻辑比特，只读出 XZ 乘积。
-  对全部 2145 个重量 1、2 的非恒等 Pauli 错误检查，没有遗漏的非平凡逻辑；静态距离下界为 3。
-- Gauging demo：原始 F 导致额外独立逻辑读出，single explicit 报错；独立 gauging 路径构造 Y 测量，并通过 adapter 测量带符号的 YZ 乘积。
+Finite row/column bounds alone do not prove an asymptotic LDPC family, and
+static distance does not establish circuit fault distance. See the
+[distance and sparsity guide](DISTANCE_PRESERVATION_ZH.md) for the exact
+thresholds, search reports, and finite-resource behavior.
 
-## 单目标重量 4 行的合法例子
+## A structural example with a weight-four row
 
 ```text
 HX = [[1,1,1,1,0], [1,1,0,0,0], [1,0,1,0,0]]
-HZ = 空矩阵 (0×5)
+HZ = an empty (0,5) matrix
 L  = ZZZZI
 F  = [[1,1,1,1], [1,1,0,0], [1,0,1,0]]
 ```
 
-`ker(F)=span(1111)`，因此单目标能构造，保留重量 4 的原始行。
-基础结果从 5 比特、2 个逻辑比特变为 8 比特、1 个逻辑比特；h(F)=1/2 本身不足以给出图距离证书。自动模式再计算实际距离，不能仅凭这个 h 值判断距离下降。
-将同一个 L 与 Z5 分别作为两个 adapter 因子时，会因左 F 含重量 4 行而报错。
-这区分的是构造路径，不是“一个逻辑 Pauli”与“逻辑 Pauli 乘积”的区别。
+`ker(F) = span(1111)`, so this target passes the single-route support check
+without removing the weight-four row. The base construction has eight
+physical qubits and one remaining logical qubit. Its `h(F) = 1/2` does not
+provide the sufficient expansion certificate. In contrast, using this factor
+in the two-factor adapter route fails the weight-two condition. This
+difference concerns the construction route, not whether a Pauli target is
+written as a product.
 
-## 默认自动计算码距与稀疏化
+## Command line
 
-Python 的四个构造接口现在默认 `require_distance=True`，显式 `False` 保留基础构造。
-CLI 未指定时仍在交互终端询问；使用 `--require-distance` / `--no-require-distance` 可显式选择。
-非交互模式未指定时保留基础构造，并打印说明。开启后没有原码 distance 时尝试计算，不再要求先手动输入。
-
-```python
-from codesurgery.distance_preservation import code_distance, stabilizer_distance
-
-result = gadget_deform(code, logical)  # 默认自动处理
-pair = gadget_pair_deform(code, L1, L2)
-basic = gauging_deform(code, logical, require_distance=False)
-result = gauging_deform(code, logical,
-    distance_options={"distance_max_candidates": 2_000_000})
-report = code_distance(result)
-# 或直接提供完整辛校验：stabilizer_distance(CX, CZ)
+```bash
+python -m codesurgery.explicit_gadgets input.json --require-distance -o deformed.json
+python -m codesurgery.gauging_measurement input.json --no-require-distance -o basic.json
 ```
 
-计算的是 centralizer 中、stabilizer 行空间外的最小 Pauli 支撑重量。报告区分精确距离、已证上下界和预算内未知，不用输入声明替代计算。若枚举不完整但已有有效图定理证明下界，则可通过距离检查，精确距离字段仍保持 `None`。
-
-默认行阈值：纯 Z 目标为 `max rowwt([HX | M_X])`，纯 X 用对偶块 `[HZ | M_Z]`，Y/XZ 用全部 memory 行的 `tau=max_i(wt(CX_i OR CZ_i)+wt(M_i))`。各项必须按同一行相加；纯目标的另一类未 dressing 校验不会暗中抬高阈值，但仍须通过最终完整矩阵检查。cycle 默认也用这个阈值，完整列参与次数另设上限。后处理不自动增大 tau；可用显式 `max_check_weight` 覆盖。
-
-实际距离和全部稀疏度界已达标就保留原矩阵。距离不足才增强扩展；超重 cycle 或拥塞才触发 decongestion/cellulation。最后重建并核验实际读出、相位、完整行列重量及实际距离。不能在指定上限内完成则报错。
-一般偶数 Tanner 行在确实需要图后处理时转换为普通辅助图，并保留原始构造记录。
-完整流程、参数、实例和伪代码见 [DISTANCE_PRESERVATION_ZH.md](DISTANCE_PRESERVATION_ZH.md)。
+Supply `hx`, `hz`, and `logical`, or `logicals: [L1, L2]` for one product.
+The explicit-gadgets entry point accepts `scheme="explicit"` or `"gauging"`.
+An interactive terminal asks whether to enable automatic processing if no
+choice is provided. A noninteractive call defaults to the basic route and
+prints a notice. `--distance d` supplies a trusted bound but does not itself
+enable processing. The [BB90 comparison example](examples/bb90_compare.py)
+shows package usage with user-selected measurements.

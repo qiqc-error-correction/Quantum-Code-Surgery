@@ -5,7 +5,7 @@
 
 - `G.npy`: an instance-specific Hamilton cycle for the standard-form BB90 Z₁
   representative, with shape 24 × 24.
-- `C_sparse.npy`: a sparse closure basis for the augmented restriction [F; G],
+- `C_sparse.npy`: a sparse cycle-check basis for the augmented restriction [F; G],
   with shape 35 × 58.
 
 These arrays depend on that exact physical representative and column ordering.

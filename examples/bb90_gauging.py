@@ -95,7 +95,7 @@ def main(argv=None):
     write_json(out/"bb90-standard-basis.json",vars(basis))
     report=dict(source=dict(n=90,k=8,published_distance=10,rank_hx=41,rank_hz=41,
                             hx_hz_commutator_nonzeros=0,hx_row_weight=6,hz_row_weight=6),
-        logical_basis="Zhang--Li standard form", logical_index_zero_based=args.logical_index,
+        logical_basis="paired CSS standard form", logical_index_zero_based=args.logical_index,
         distance_kind="static stabilizer distance; not circuit fault distance",cases={})
     for pauli in dict.fromkeys(args.paulis):
         label=f"{pauli.lower()}{args.logical_index+1}"

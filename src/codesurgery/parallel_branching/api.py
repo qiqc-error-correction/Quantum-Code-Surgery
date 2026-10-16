@@ -18,8 +18,9 @@ def branching_deform(code, targets=None, *, logical_paulis=None, pauli="Z",
                      branching_mode="adaptive", max_check_increase=2, max_qubit_increase=2):
     """Route compatible logical targets directly or through branching stickers.
 
-    The input is a CSSCode. Omit targets/basis to select all standard-form Z
-    logicals. ``targets`` are signed physical IXYZ strings of length n;
+    The input is a CSSCode. Omit targets to select all Z generators in the
+    selected basis. Omit the basis to obtain paired CSS logical generators
+    by Gaussian elimination. ``targets`` are signed physical IXYZ strings of length n;
     ``logical_paulis`` instead specifies logical strings of length k.
     Representatives must be qubit-wise commuting, possibly after a signed
     stabilizer-equivalent rewrite in the selected logical basis (auto mode).
@@ -153,7 +154,8 @@ def branching_deform(code, targets=None, *, logical_paulis=None, pauli="Z",
     if cx.shape[1] - code.n != optimization["after_ancillas"]:
         raise RuntimeError("Actual branching size disagrees with the selected routing cost")
     witness = equivalence_witnesses(cx, cz, cs, ox, oz, os, tx, tz, ts)
-    metadata = dict(scheme="Parallel Logical Measurements: branching", paper="https://arxiv.org/abs/2503.05003v3",
+    metadata = dict(scheme="Zhang--Li brute-force branching", paper="https://arxiv.org/abs/2408.01339",
+        pauli_extension_paper="https://arxiv.org/abs/2503.05003v3",
         stage="branching_only", logical_measurement_performed=False,
         basis_source=p["basis_source"], input_mode=p["input_mode"],
         representation_action=p["representation_action"], logical_signatures=p["logical_signatures"].tolist(),

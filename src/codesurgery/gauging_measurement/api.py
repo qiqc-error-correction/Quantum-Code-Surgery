@@ -1,7 +1,7 @@
 """Williamson--Yoder auxiliary-graph measurement, including signed Y/XZ.
 
-Graph construction choices are explicit. This implements the static,
-flux-fixed deformed code, not a syndrome-extraction circuit simulator.
+Graph construction choices are explicit. The static deformed code includes
+a complete set of cycle checks; this module does not simulate check circuits.
 """
 import numpy as np
 from ..gf2 import binary_matrix, solve, nullspace, rank
@@ -229,7 +229,7 @@ def build_graph(code, target, basis, graph, *, ports=None, matching=None,
             extra_metadata["postprocessing_distance_proof"], verified_base_certificate=verified["base_certificate"])
     weights, degrees = (cx | cz).sum(axis=1), (cx | cz).sum(axis=0)
     metadata = dict(scheme=scheme, incidence_kind=incidence_kind,
-        construction="connected auxiliary graph with full flux closure" if ordinary_connected else
+        construction="connected auxiliary graph with a complete cycle-check space" if ordinary_connected else
                      "even Tanner restriction with complete auxiliary kernel checks",
         graph_incidence=b, port_selector=s, ports=ports, support=support,
         matching_matrix=m, cycle_basis=cycles, logical_basis=basis,

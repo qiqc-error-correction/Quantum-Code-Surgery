@@ -102,7 +102,7 @@ class GraphMeasurementCode(DeformedCode):
         if not np.array_equal(ex, self.check_x) or not np.array_equal(ez, self.check_z):
             raise ValueError("Exported graph data disagree with actual checks")
         if np.any(self.check_signs[:r]) or np.any(self.check_signs[r + v:]):
-            raise ValueError("Memory and flux check signs must be positive")
+            raise ValueError("Memory and cycle check signs must be positive")
         for dep in nullspace(np.hstack([ex, ez]).T):
             _, _, phase = pauli_product(ex, ez, self.check_signs, np.flatnonzero(dep))
             if phase:

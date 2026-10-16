@@ -1,7 +1,8 @@
-"""Paired CSS logical operators in Zhang--Li's simultaneous standard form.
+"""Logical operators in a paired CSS standard form.
 
 For CSS *stabilizer* codes, ``k = n - rank(H_X) - rank(H_Z)``. This module
-constructs representatives in Appendix A's form
+uses standard stabilizer Gaussian elimination to construct representatives
+with the block convention illustrated by Zhang and Li, Appendix A:
 
     J_X^S = [I_k | 0_(k,r_X) | J_X']
     J_Z^S = [I_k | J_Z'       | 0_(k,r_Z)].
@@ -11,7 +12,10 @@ permutations; it does not minimize operator weights. Returned ``jx``/``jz``
 are in the original physical order and obey ``jx @ jz.T = I_k`` in GF(2).
 Phases are omitted, with +1 stabilizer signs assumed.
 
-Reference: Guo Zhang and Ying Li, arXiv:2408.01339v3, Appendix A.
+References for stabilizer standard forms and Gaussian elimination:
+Gottesman (1997), arXiv:quant-ph/9705052, Section 4.1; Cleve and Gottesman
+(1996), arXiv:quant-ph/9607030, Section III. Reference for the displayed CSS
+block convention: Guo Zhang and Ying Li, arXiv:2408.01339v3, Appendix A.
 """
 
 from __future__ import annotations

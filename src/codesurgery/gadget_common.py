@@ -20,7 +20,7 @@ class GaugeMeasurementRequired(ValueError):
 def logical_basis_for(code, supplied=None):
     if supplied is None:
         basis = code.standard_logicals()
-        return dict(jx=basis.jx, jz=basis.jz, origin="Zhang--Li standard form")
+        return dict(jx=basis.jx, jz=basis.jz, origin="paired CSS standard form")
     if not isinstance(supplied, dict) or "jx" not in supplied or "jz" not in supplied:
         raise ValueError("logical_basis must be a dict with jx and jz (paired pure CSS logical rows)")
     jx = binary_matrix(supplied["jx"], n_cols=code.n, name="logical_basis.jx")

@@ -31,7 +31,7 @@ class BranchingTargetTests(unittest.TestCase):
         np.testing.assert_array_equal(result["source_check_x"][:3], checks)
         np.testing.assert_array_equal(result["source_check_z"][3:], checks)
         np.testing.assert_array_equal(result["logical_signatures"], np.hstack((np.zeros((2, 2)), np.eye(2))))
-        self.assertEqual(result["basis_source"], "Zhang--Li standard form")
+        self.assertEqual(result["basis_source"], "paired CSS standard form")
         self.assertEqual(result["target_logical_rank"], 2)
         self.assert_witnesses(result)
         result["source_check_x"][0, 0] = 0

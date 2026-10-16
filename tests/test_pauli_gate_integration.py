@@ -49,7 +49,7 @@ def test_cache_reuses_only_equal_observables_and_fixed_basis():
 def test_decomposition_only_uses_basis_but_builds_no_gadgets():
     plan = compile_gate(four_qubit_code(), 'H', build=False)
     assert plan.gadgets == {}
-    assert plan.logical_basis['origin'] == 'Zhang--Li standard form'
+    assert plan.logical_basis['origin'] == 'paired CSS standard form'
     assert len(plan.measurements) == 4
     with pytest.raises(ValueError, match='reserved'):
         compile_gate(four_qubit_code(), 'H', target=0, build=False)
