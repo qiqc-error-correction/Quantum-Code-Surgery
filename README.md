@@ -79,7 +79,7 @@ H_X^S=[A\mid I_{r_X}\mid B],\qquad
 H_Z^S=[C\mid D\mid I_{r_Z}],
 $$
 
-where the three column blocks have sizes k, r_X, and r_Z, with `k = n - r_X - r_Z`. Then choose
+where the three column blocks have sizes $k$, $r_X$, and $r_Z$, with $k = n - r_X - r_Z$. Then choose
 
 $$
 J_X^S=[I_k\mid0\mid C^T],\qquad
