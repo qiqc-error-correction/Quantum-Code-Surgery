@@ -1,0 +1,16 @@
+include LICENSE README.md pyproject.toml
+include ALGORITHM.md DEVISED_STICKING.md DISTANCE_PRESERVATION_ZH.md
+include EXPLICIT_GADGETS.md EXPLICIT_GADGETS_ZH.md
+recursive-include src *.py
+recursive-include tests *.py
+recursive-include docs *.md
+include examples/bb90_*.py
+include examples/bb90-explicit-data/G.npy
+include examples/bb90-explicit-data/C_sparse.npy
+include examples/bb90-explicit-data/README.md
+prune results
+prune build
+prune dist
+prune .pytest_cache
+prune .idea
+global-exclude __pycache__ *.py[cod] .DS_Store
