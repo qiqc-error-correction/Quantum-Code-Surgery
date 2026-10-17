@@ -331,6 +331,10 @@ Please also cite the original method papers relevant to the constructions used i
 - **BB memory codes:** Sergey Bravyi, Andrew W. Cross, Jay M. Gambetta, Dmitri Maslov, Patrick Rall, and Theodore J. Yoder, *High-threshold and low-overhead fault-tolerant quantum memory*, Nature **627**, 778–782 (2024). [arXiv:2308.07915](https://arxiv.org/abs/2308.07915).
 - **Logical gate measurement constructions:** Anirudh Krishna and David Poulin, *Fault-tolerant gates on hypergraph product codes*, Physical Review X **11**, 011023 (2021). [arXiv:1909.07424](https://arxiv.org/abs/1909.07424). Daniel Litinski and Felix von Oppen, *Lattice Surgery with a Twist: Simplifying Clifford Gates of Surface Codes*, Quantum **2**, 62 (2018). [arXiv:1709.02318](https://arxiv.org/abs/1709.02318).
 
+## Contact
+
+For questions or feedback, contact Guo Zhang at [guo02968@gmail.com](mailto:guo02968@gmail.com).
+
 ## License
 
 CodeSurgery is released under the [MIT License](https://github.com/qiqc-error-correction/codesurgery/blob/main/LICENSE). Optional dependencies, including Gurobi, have their own licenses.
